@@ -16,13 +16,17 @@
 #define XCONFIG_USER_CATEGORY       0x0003
 #define XCONFIG_USER_PC_PASSWORD    0x0017    
 #define XCONFIG_USER_PC_FLAGS       0x000F
+#define XCONFIG_SECURED_CATEGORY    0x0002
+#define XCONFIG_SECURED_RESET_KEY   0x0005
 
 bool show_text = false;
 float text_start_time = 0.0f; // in seconds
 float text_duration   = 5.0f; // 5 seconds
 wchar_t status_message[255];
 wchar_t parentalControlCodeText[64];
+wchar_t hiddenSettingsCodeText[64];
 DWORD parentalControlCode = 666;
+DWORD hiddenSettingsCode = 666;
 bool initialCodeDisplayed = false;
 char* passcodeButtons[4];
 
@@ -62,10 +66,9 @@ HRESULT ParentalControlRemover::Update() {
     m_pGamepad = ATG::Input::GetMergedInput();
 
 	if (initialCodeDisplayed == false) {
+		// Automatically look up Parental Control and hidden settings codes
 		parentalControlCode = GetParentalControlCode();
-		if (parentalControlCode == 0) {
-			ShowTextForSeconds(L"No passcode set", 3);
-		}
+		hiddenSettingsCode = GetHiddenSettingsCode();
 		initialCodeDisplayed = true;
 	}
 
@@ -98,19 +101,19 @@ DWORD GetParentalControlCode() {
 		// Passcode now contains the 4-byte parental control code
 	}
 	else {
-		ShowTextForSeconds(L"Failed to retreive passcode", 3);
+		ShowTextForSeconds(L"Failed to retreive Parental Control passcode", 3);
 	}
 
 	if (passcode == 0) {
-		swprintf(parentalControlCodeText, L"Passcode: Not set");
+		swprintf(parentalControlCodeText, L"Parental Control passcode: Not set");
 	}
 	else {
 		// Convert passcode to button names
-		passcodeButtons[0] = GetButtonName((passcode & 0xFF << 24) >> 24);
-		passcodeButtons[1] = GetButtonName((passcode & 0xFF << 16) >> 16);
-		passcodeButtons[2] = GetButtonName((passcode & 0xFF <<  8) >>  8);
-		passcodeButtons[3] = GetButtonName((passcode & 0xFF <<  0) >>  0);
-		swprintf(parentalControlCodeText, L"Passcode: %S - %S - %S - %S", passcodeButtons[0], passcodeButtons[1], passcodeButtons[2], passcodeButtons[3]);
+		passcodeButtons[0] = GetParentalControlsButtonName((passcode & 0xFF << 24) >> 24);
+		passcodeButtons[1] = GetParentalControlsButtonName((passcode & 0xFF << 16) >> 16);
+		passcodeButtons[2] = GetParentalControlsButtonName((passcode & 0xFF <<  8) >>  8);
+		passcodeButtons[3] = GetParentalControlsButtonName((passcode & 0xFF <<  0) >>  0);
+		swprintf(parentalControlCodeText, L"Parental Control passcode: %S - %S - %S - %S", passcodeButtons[0], passcodeButtons[1], passcodeButtons[2], passcodeButtons[3]);
 		
 		// Print passcode as bytes
 		//swprintf(parentalControlCodeText, L"Passcode: %08X", passcode);
@@ -121,7 +124,7 @@ DWORD GetParentalControlCode() {
 void ClearParentalControls() {
 	if (parentalControlCode != 0) {
 		// Turn off Parental Controls
-		char flags = 0x0; // 0 = turn off parental controls
+		char flags = 0x0; // 0 = off
 		DWORD flagsSize = sizeof(flags);
 		NTSTATUS status1 = ExSetXConfigSetting(
 			XCONFIG_USER_CATEGORY,
@@ -130,8 +133,7 @@ void ClearParentalControls() {
 			flagsSize
 		);
 
-		// Wipe passcode
-		// If not wiped, it will ask for the old passcode if you turn Parental Controls back on
+		// Wipe passcode - if not wiped, it will ask for the old passcode if you turn Parental Controls back on
 		DWORD passcode = 0x00000000; // 0 = no passcode
 		DWORD passcodeSize = sizeof(passcode);
 		NTSTATUS status2 = ExSetXConfigSetting(
@@ -153,20 +155,58 @@ void ClearParentalControls() {
 	}
 }
 
-char* GetButtonName(char button) {
+DWORD GetHiddenSettingsCode() {
+	DWORD passcode = 0;
+	DWORD size = sizeof(passcode);
+
+	NTSTATUS status = ExGetXConfigSetting(
+		XCONFIG_SECURED_CATEGORY,
+		XCONFIG_SECURED_RESET_KEY,
+		&passcode,
+		size,
+		&size
+	);
+
+	if (NT_SUCCESS(status)) {
+		// Passcode now contains the 4-byte parental control code
+	}
+	else {
+		ShowTextForSeconds(L"Failed to retrieve hidden settings passcode", 3);
+	}
+
+	if (passcode == 0) {
+		// Shouldn't be possible
+		swprintf(hiddenSettingsCodeText, L"Hidden settings passcode: Not set");
+	}
+	else {
+		// Convert passcode to button names
+		passcodeButtons[0] = GetHiddenSettingsButtonName((passcode & 0xFF << 24) >> 24);
+		passcodeButtons[1] = GetHiddenSettingsButtonName((passcode & 0xFF << 16) >> 16);
+		passcodeButtons[2] = GetHiddenSettingsButtonName((passcode & 0xFF <<  8) >>  8);
+		passcodeButtons[3] = GetHiddenSettingsButtonName((passcode & 0xFF <<  0) >>  0);
+		swprintf(hiddenSettingsCodeText, L"Hidden settings passcode: %S - %S - %S - %S", passcodeButtons[0], passcodeButtons[1], passcodeButtons[2], passcodeButtons[3]);
+		
+		// Print passcode as bytes
+		//swprintf(hiddenSettingsCodeText, L"Passcode: %08X", passcode);
+	}
+	return passcode;
+}
+
+char* GetParentalControlsButtonName(char button) {
+	// Buttons are arbitrarily assigned values
 	switch (button) {
 		case 0x01:
 			return "X";
 		case 0x02:
 			return "Y";
 		case 0x03:
-			return "DPAD LEFT";
+			return "LEFT";
 		case 0x04:
-			return "DPAD RIGHT";
+			return "RIGHT";
 		case 0x05:
-			return "DPAD UP";
+			return "UP";
 		case 0x06:
-			return "DPAD DOWN";
+			return "DOWN";
 		case 0x09:
 			return "LT";
 		case 0x0A:
@@ -180,13 +220,36 @@ char* GetButtonName(char button) {
 	}
 }
 
+char* GetHiddenSettingsButtonName(char button) {
+	// Buttons are hex codes of ASCII characters
+	switch (button) {
+		case 0x41: // A
+			return "A";
+		case 0x58: // X
+			return "X";
+		case 0x59: // Y
+			return "Y";
+		case 0x4C: // L
+			return "LEFT";
+		case 0x52: // R
+			return "RIGHT";
+		case 0x55: // U
+			return "UP";
+		case 0x44: // D
+			return "DOWN";
+		default:
+			return "UNK";
+	}
+}
+
 HRESULT ParentalControlRemover::DrawTextContent() {
     D3DRECT rc = m_Font16.m_rcWindow;
 	
 	//// BIG TEXT
     m_Font16.Begin();
     m_Font16.DrawText( ( rc.x2 - rc.x1 ) / 2.0f, 50, 0xffffffff, L"Parental Control Remover", ATGFONT_CENTER_X );
-	m_Font16.DrawText( ( rc.x2 - rc.x1 ) / 2.0f, 125, 0xffffffff, parentalControlCodeText, ATGFONT_CENTER_X );
+	m_Font16.DrawText( ( rc.x2 - rc.x1 ) / 2.0f, 110, 0xffffffff, parentalControlCodeText, ATGFONT_CENTER_X );
+	m_Font16.DrawText( ( rc.x2 - rc.x1 ) / 2.0f, 140, 0xffffffff, hiddenSettingsCodeText, ATGFONT_CENTER_X );
 
 	// Temporary message printed to screen
 	if (show_text) {

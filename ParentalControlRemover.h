@@ -20,8 +20,10 @@ extern "C" NTSTATUS __stdcall ExSetXConfigSetting(
 );
 
 DWORD GetParentalControlCode();
+DWORD GetHiddenSettingsCode();
 void ClearParentalControls();
 void ShowTextForSeconds(const wchar_t *message, float seconds);
-char* GetButtonName(char button);
+char* GetParentalControlsButtonName(char button);
+char* GetHiddenSettingsButtonName(char button);
 
 #endif
